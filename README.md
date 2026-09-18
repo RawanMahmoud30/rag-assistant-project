@@ -1,314 +1,973 @@
-# 📚 Study Assistant — RAG-Powered Document Q&A
+# RAG Study Assistant
 
-A Retrieval-Augmented Generation (RAG) application that answers questions about a set of
-study-notes PDFs, grounded in the documents themselves, using a **local Ollama LLM** (no cloud
-API, no API key). Built for the Level 2 Summer Training Graduation Project (Core Track).
+A Retrieval-Augmented Generation (RAG) based AI Study Assistant that answers questions from educational documents using semantic retrieval, vector embeddings, and a locally hosted Large Language Model.
 
-## Table of contents
+The system retrieves relevant document chunks from a ChromaDB vector store and uses Ollama with Llama 3.2 to generate grounded answers based only on the retrieved context.
 
-- [Overview](#overview)
-- [Problem statement](#problem-statement)
-- [How the RAG system works](#how-the-rag-system-works)
-- [Architecture diagram](#architecture-diagram)
-- [Tech stack](#tech-stack)
-- [Project structure](#project-structure)
-- [Domain & data description](#domain--data-description)
-- [Installation](#installation)
-- [Ollama setup](#ollama-setup)
-- [Running the notebook](#running-the-notebook)
-- [Running the backend](#running-the-backend)
-- [Running the frontend](#running-the-frontend)
-- [Environment variables](#environment-variables)
-- [API reference](#api-reference)
-- [Evaluation results](#evaluation-results)
-- [Screenshots](#screenshots)
-- [Troubleshooting](#troubleshooting)
-- [Final demo instructions](#final-demo-instructions)
-- [Requirements checklist](#requirements-checklist)
+The project provides a FastAPI backend for the RAG pipeline and a Streamlit frontend for an interactive chat-style interface.
 
-## Overview
+---
 
-A user asks a question in a chat-style web interface. The question is sent to a FastAPI
-backend, which retrieves the most relevant chunks of text from a locally-built vector database,
-sends them together with the question to a local Ollama LLM, and returns an answer that is
-**grounded in the retrieved documents**, along with the sources it used.
+## 1. Project Overview
 
-## Problem statement
+The goal of this project is to build a complete end-to-end RAG application that can answer questions from a predefined collection of study documents.
 
-General-purpose chatbots answer from their own training data, which means they can
-confidently make things up ("hallucinate") when asked about a specific set of documents they
-were never trained on. This project solves that for a small, well-defined document set: instead
-of asking the LLM to recall facts from memory, we **look up the relevant text first**, and force
-the LLM to answer only from what was found — while running entirely locally and free of charge.
+Instead of allowing the language model to answer using only its pretrained knowledge, the system follows a retrieval-first architecture:
 
-## How the RAG system works
+1. A user submits a question.
+2. The question is converted into an embedding.
+3. ChromaDB searches the vector store for semantically similar document chunks.
+4. The most relevant chunks and their metadata are retrieved.
+5. The retrieved context is provided to the local LLM.
+6. The LLM generates an answer based only on the retrieved documents.
+7. The backend returns the answer together with the retrieved sources.
+8. The Streamlit frontend displays the answer and sources to the user.
 
-1. **Ingest**: PDFs in `data/raw_docs/` are loaded and their text extracted (`pypdf`).
-2. **Clean**: extracted text is normalized (whitespace collapsed, trimmed).
-3. **Chunk**: cleaned text is split into overlapping ~800-character chunks per document.
-4. **Embed**: each chunk is converted into a vector using a local embedding model
-   (`sentence-transformers/all-MiniLM-L6-v2`).
-5. **Store**: chunk vectors + text + source metadata are persisted in a local **Chroma**
-   vector database.
-6. **Retrieve**: at question time, the question is embedded the same way, and the most similar
-   chunks are looked up from Chroma.
-7. **Prompt**: the retrieved chunks are inserted into a prompt template along with the question,
-   instructing the LLM to answer only from that context.
-8. **Generate**: the prompt is sent to a local **Ollama** model, which returns a grounded answer.
-9. **Cite**: the API response always includes the source files/chunks used, independent of what
-   the LLM says in its own text.
+This approach improves grounding and reduces unsupported answers.
 
-## Architecture diagram
+---
 
-```mermaid
-flowchart LR
-    subgraph Offline["Offline (notebook, run once)"]
-        A[PDFs in data/raw_docs] --> B[Load & Extract Text]
-        B --> C[Clean Text]
-        C --> D[Chunk Text]
-        D --> E[Generate Embeddings]
-        E --> F[(Chroma Vector Store)]
-    end
+## 2. Domain and Data Description
 
-    subgraph Online["Online (every user question)"]
-        U[User] -->|types question| FE[Streamlit Frontend]
-        FE -->|POST /query| BE[FastAPI Backend]
-        BE -->|embed question + similarity search| F
-        F -->|top-k relevant chunks| BE
-        BE -->|prompt + context| OL[Ollama Local LLM]
-        OL -->|grounded answer| BE
-        BE -->|answer + sources JSON| FE
-        FE -->|renders answer + sources| U
-    end
+### Domain
+
+The project focuses on educational and machine learning study materials.
+
+The main source document used for the RAG system is:
+
+**Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow**
+
+The document contains educational material covering topics such as:
+
+* Machine Learning fundamentals
+* Supervised and unsupervised learning
+* Classification
+* Regression
+* Model evaluation
+* Cross-validation
+* ROC curves
+* Ensemble methods
+* Random Forests
+* Neural Networks
+* Generative Adversarial Networks
+* Reinforcement Learning
+* Q-learning
+* Bias and variance
+* Model training and regularization
+
+### Data Processing
+
+The document was processed page by page and divided into smaller chunks suitable for semantic retrieval.
+
+Each chunk stores metadata including:
+
+* Source document
+* Page number
+* Chunk identifier
+
+The final ChromaDB collection contains:
+
+**2,449 document chunks**
+
+The page-aware metadata allows the system to return not only relevant text but also the source and page where the information was found.
+
+---
+
+## 3. System Architecture
+
+```text
+                         User
+                           |
+                           v
+                  Streamlit Frontend
+                           |
+                           | HTTP POST /query
+                           v
+                    FastAPI Backend
+                           |
+                           v
+                    Query Processing
+                           |
+                           v
+                 Sentence Transformer
+                    Embedding Model
+                           |
+                           v
+                     ChromaDB
+                  Vector Retrieval
+                           |
+                           | Top-K Chunks
+                           v
+                  Retrieved Context
+                           |
+                           v
+                      Ollama
+                     Llama 3.2
+                           |
+                           v
+                  Grounded Answer
+                           |
+                           v
+                 Answer + Sources
+                           |
+                           v
+                  Streamlit Frontend
 ```
 
-## Tech stack
+---
 
-| Layer            | Technology                                   |
-|-------------------|-----------------------------------------------|
-| PDF parsing       | `pypdf`                                       |
-| Embeddings        | `sentence-transformers` (`all-MiniLM-L6-v2`)  |
-| Vector database   | `chromadb` (persistent, local)                |
-| LLM               | `Ollama` (local, e.g. `llama3.2`)             |
-| Backend API       | `FastAPI` + `uvicorn`                         |
-| Frontend          | `Streamlit`                                   |
-| Notebook          | `Jupyter`                                     |
-| Testing           | `pytest` + FastAPI `TestClient`               |
+## 4. RAG Pipeline
 
-## Project structure
+The RAG pipeline consists of the following stages.
 
+### 4.1 Document Loading
+
+The source document is loaded and processed page by page.
+
+The notebook inspects the document and prepares the content for chunking.
+
+### 4.2 Chunking
+
+The document is divided into smaller chunks.
+
+Chunking allows the retrieval system to search for specific pieces of information instead of processing the entire document for every question.
+
+The chunking configuration is defined in the RAG notebook and exported as part of the project configuration.
+
+### 4.3 Embeddings
+
+Each document chunk is converted into a numerical vector representation using:
+
+```text
+all-MiniLM-L6-v2
 ```
+
+These embeddings capture the semantic meaning of the text and allow the system to perform similarity-based retrieval.
+
+### 4.4 Vector Store
+
+The embeddings are stored in:
+
+```text
+ChromaDB
+```
+
+The persisted vector store contains the embedded document chunks together with their metadata.
+
+### 4.5 Retrieval
+
+When a user asks a question, the question is embedded and compared with the stored document embeddings.
+
+The system retrieves the most relevant chunks using semantic similarity.
+
+The retrieval process is page-aware and returns metadata such as:
+
+```text
+Source: Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow
+Page: 60
+Distance: 0.5688
+```
+
+### 4.6 Generation
+
+The retrieved chunks are passed to the local LLM running through Ollama.
+
+The model used is:
+
+```text
+Llama 3.2
+```
+
+The generation prompt instructs the model to answer using the provided context and avoid relying on outside information.
+
+If the retrieved documents do not contain enough information, the system can respond:
+
+```text
+I don't have enough information in the documents to answer that.
+```
+
+This provides a grounding mechanism against unsupported answers.
+
+---
+
+## 5. Technologies
+
+| Technology            | Purpose                     |
+| --------------------- | --------------------------- |
+| Python 3.14.5         | Main programming language   |
+| FastAPI               | Backend REST API            |
+| Uvicorn               | ASGI server                 |
+| Pydantic              | Request/response validation |
+| Pydantic Settings     | Environment configuration   |
+| ChromaDB              | Vector database             |
+| Sentence Transformers | Text embeddings             |
+| all-MiniLM-L6-v2      | Embedding model             |
+| Ollama                | Local LLM runtime           |
+| Llama 3.2             | Generation model            |
+| Streamlit             | Frontend interface          |
+| Pytest                | Backend testing             |
+| HTTPX                 | API testing                 |
+| Jupyter Notebook      | RAG pipeline development    |
+
+---
+
+## 6. Project Structure
+
+```text
 rag-assistant-project/
-├── data/
-│   ├── raw_docs/                 # source study-notes PDFs (git-ignored if large)
-│   ├── vector_store/             # Chroma store built by the notebook (git-ignored)
-│   └── generate_sample_docs.py   # generates the starter sample PDFs
-├── notebooks/
-│   └── rag_pipeline.ipynb        # full RAG pipeline: load -> ... -> evaluate -> export
+│
 ├── backend/
 │   ├── app/
-│   │   ├── main.py                       # FastAPI app, CORS, startup loading
-│   │   ├── api/routes/query.py           # GET /health, POST /query
-│   │   ├── core/config.py                # settings from .env
-│   │   ├── schemas/query.py              # QueryRequest / QueryResponse
-│   │   ├── services/retrieval.py         # load vector store, retrieve chunks
-│   │   ├── services/generation.py        # build prompt, call Ollama
-│   │   └── utils/logging_config.py
-│   ├── data/vector_store/        # copy of the persisted store (git-ignored)
-│   ├── tests/test_query.py
-│   ├── requirements.txt
+│   │   ├── api/
+│   │   │   └── routes/
+│   │   │       └── query.py
+│   │   │
+│   │   ├── core/
+│   │   │   └── config.py
+│   │   │
+│   │   ├── schemas/
+│   │   │   └── query.py
+│   │   │
+│   │   ├── services/
+│   │   │   ├── retrieval.py
+│   │   │   └── generation.py
+│   │   │
+│   │   ├── utils/
+│   │   │   └── logging_config.py
+│   │   │
+│   │   └── main.py
+│   │
+│   ├── tests/
+│   │   └── test_query.py
+│   │
 │   ├── .env.example
-│   └── Dockerfile
+│   ├── Dockerfile
+│   └── requirements.txt
+│
+├── data/
+│   └── generate_sample_docs.py
+│
 ├── frontend/
-│   ├── app.py                    # Streamlit chat UI
-│   ├── api_client.py             # wrapper for calling the backend
+│   ├── api_client.py
+│   ├── app.py
 │   ├── .env.example
 │   └── requirements.txt
-├── requirements.txt               # for running the notebook
+│
+├── notebooks/
+│   └── rag_pipeline.ipynb
+│
 ├── .gitignore
-└── README.md
+├── README.md
+└── requirements.txt
 ```
 
-## Domain & data description
+---
 
-**Domain: Study Assistant.** The starter corpus (`data/raw_docs/`) contains 4 short PDFs of
-programming study notes: Python variables & data types, Python functions, data structures
-(lists/dicts/sets), and OOP basics. They were generated with `data/generate_sample_docs.py` so
-the project works out of the box with real, text-extractable PDFs. You can freely replace or add
-your own PDFs (lecture notes, slides exported as PDF, textbook excerpts) as long as they are
-text-based rather than scanned images — scanned PDFs would need an OCR step not included here.
+## 7. Requirements
 
-## Installation
+Before running the project, make sure the following are installed:
+
+* Python 3.14.5
+* Ollama
+* Git
+
+The project uses separate Python dependencies for the backend and frontend.
+
+---
+
+## 8. Clone the Repository
 
 ```bash
-git clone https://github.com/<your-username>/rag-assistant-app.git
-cd rag-assistant-app
+git clone https://github.com/RawanMahmoud30/rag-assistant-project.git
+cd rag-assistant-project
+```
 
+---
+
+## 9. Create the Virtual Environment
+
+Create a virtual environment:
+
+```bash
 python -m venv .venv
-# Windows:
-.venv\Scripts\activate
-# macOS / Linux:
-source .venv/bin/activate
-
-pip install -r requirements.txt          # for the notebook
-pip install -r backend/requirements.txt  # for the API
-pip install -r frontend/requirements.txt # for the UI
 ```
 
-> You can also create separate virtual environments per folder if you prefer full isolation —
-> a single shared one is simpler for a student project and is what these instructions assume.
+Activate it on Windows PowerShell:
 
-## Ollama setup
-
-1. Install Ollama from [ollama.com](https://ollama.com) for your OS.
-2. Verify it: `ollama --version`
-3. Start the server (often already running as a background service after install):
-   `ollama serve`
-4. Pull the model used by this project:
-   ```bash
-   ollama pull llama3.2
-   ```
-5. Quick sanity check: `ollama run llama3.2 "Say hello"` should print a response.
-
-## Running the notebook
-
-```bash
-cd notebooks
-jupyter notebook rag_pipeline.ipynb
-# In Jupyter: Kernel -> Restart & Run All
+```powershell
+.\.venv\Scripts\Activate.ps1
 ```
 
-Expected successful output: the last cells print `Vector store populated with 8 chunks...` and
-`Copied vector store to ../backend/data/vector_store`. This step **must be run before** starting
-the backend for the first time (and again any time you change the documents or chunking).
+After activation, the terminal should show:
 
-## Running the backend
+```text
+(.venv)
+```
+
+---
+
+## 10. Install Dependencies
+
+Install the project dependencies:
 
 ```bash
+pip install -r requirements.txt
+```
+
+Install backend dependencies:
+
+```bash
+pip install -r backend/requirements.txt
+```
+
+Install frontend dependencies:
+
+```bash
+pip install -r frontend/requirements.txt
+```
+
+---
+
+## 11. Ollama Setup
+
+The project uses Ollama to run the LLM locally.
+
+Install Ollama and make sure the Ollama service is running.
+
+Pull the required model:
+
+```bash
+ollama pull llama3.2
+```
+
+Verify that the model is available:
+
+```bash
+ollama list
+```
+
+The output should contain:
+
+```text
+llama3.2
+```
+
+The backend communicates with Ollama through:
+
+```text
+http://localhost:11434
+```
+
+---
+
+## 12. Environment Variables
+
+### Backend
+
+Create:
+
+```text
+backend/.env
+```
+
+based on:
+
+```text
+backend/.env.example
+```
+
+Example configuration:
+
+```env
+VECTOR_STORE_DIR=./data/vector_store
+CHROMA_COLLECTION_NAME=study_assistant_docs
+EMBEDDING_MODEL_NAME=all-MiniLM-L6-v2
+OLLAMA_HOST=http://localhost:11434
+OLLAMA_MODEL=llama3.2
+TOP_K=4
+FRONTEND_ORIGINS=http://localhost:8501
+```
+
+### Frontend
+
+Create:
+
+```text
+frontend/.env
+```
+
+based on:
+
+```text
+frontend/.env.example
+```
+
+Example:
+
+```env
+API_BASE_URL=http://localhost:8000
+```
+
+The backend URL is configured through an environment variable rather than being hard-coded into the frontend application.
+
+---
+
+## 13. Vector Store
+
+The RAG notebook creates a persisted ChromaDB vector store.
+
+The notebook uses:
+
+```text
+data/vector_store/
+```
+
+and prepares the backend vector store under:
+
+```text
+backend/data/vector_store/
+```
+
+The vector store contains:
+
+* ChromaDB database
+* Vector embeddings
+* Document chunks
+* Source metadata
+* Page metadata
+
+If the vector store is not available after cloning, run the notebook:
+
+```text
+notebooks/rag_pipeline.ipynb
+```
+
+from top to bottom to recreate it.
+
+---
+
+## 14. Running the Backend
+
+Open a terminal in the project directory.
+
+Move to the backend directory:
+
+```powershell
 cd backend
-cp .env.example .env      # adjust values if needed
-uvicorn app.main:app --reload
 ```
 
-Expected output: log lines ending with `Application startup complete.` and
-`Uvicorn running on http://127.0.0.1:8000`. Open `http://localhost:8000/docs` to try `/query`
-directly from the Swagger UI.
+Activate the virtual environment if it is not already active:
 
-Run the tests:
+```powershell
+..\ .venv\Scripts\Activate.ps1
+```
+
+Use this command without the space if needed:
+
+```powershell
+..\.venv\Scripts\Activate.ps1
+```
+
+Start FastAPI:
+
 ```bash
-pytest -v
+python -m uvicorn app.main:app --reload
 ```
-Expected: `3 passed` (health check, happy path, invalid-input 422).
 
-## Running the frontend
+The backend will run at:
+
+```text
+http://127.0.0.1:8000
+```
+
+---
+
+## 15. Health Check
+
+The backend provides:
+
+```text
+GET /health
+```
+
+Example:
 
 ```bash
-cd frontend
-cp .env.example .env      # adjust API_BASE_URL if needed
-streamlit run app.py
+curl http://127.0.0.1:8000/health
 ```
 
-Expected output: a browser tab opens at `http://localhost:8501` showing "📚 Study Assistant"
-with a green "Backend is reachable ✅" message in the sidebar (assuming the backend is running).
+Expected response:
 
-## Environment variables
-
-**backend/.env**
-
-| Variable                | Default                          | Description                                      |
-|--------------------------|-----------------------------------|--------------------------------------------------|
-| `VECTOR_STORE_DIR`       | `./data/vector_store`             | Path to the persisted Chroma store                |
-| `CHROMA_COLLECTION_NAME` | `study_assistant_docs`            | Chroma collection name                            |
-| `EMBEDDING_MODEL_NAME`   | `all-MiniLM-L6-v2`                | Must match the model used in the notebook         |
-| `OLLAMA_HOST`            | `http://localhost:11434`          | Ollama server address                             |
-| `OLLAMA_MODEL`           | `llama3.2`                        | Ollama model to use for generation                |
-| `TOP_K`                  | `4`                                | Number of chunks retrieved per question           |
-| `FRONTEND_ORIGINS`       | `http://localhost:8501`           | Comma-separated CORS-allowed origins              |
-
-**frontend/.env**
-
-| Variable        | Default                  | Description                          |
-|------------------|----------------------------|---------------------------------------|
-| `API_BASE_URL`   | `http://localhost:8000`   | Base URL of the FastAPI backend       |
-
-## API reference
-
-### `GET /health`
-Returns `{"status": "ok"}` if the API is reachable.
-
-### `POST /query`
-
-Request body:
-```json
-{ "question": "What is a variable in Python?" }
-```
-
-Response body:
 ```json
 {
-  "answer": "A variable is a named container used to store a value in memory. [1]",
+  "status": "ok"
+}
+```
+
+---
+
+## 16. Query API
+
+The main endpoint is:
+
+```text
+POST /query
+```
+
+### Request
+
+```json
+{
+  "question": "What is overfitting?"
+}
+```
+
+### Example using curl
+
+```bash
+curl -X POST "http://127.0.0.1:8000/query" ^
+  -H "Content-Type: application/json" ^
+  -d "{\"question\":\"What is overfitting?\"}"
+```
+
+### Example response
+
+```json
+{
+  "answer": "Overfitting happens when a model learns the training data too closely...",
   "sources": [
-    {
-      "source": "python_basics.pdf",
-      "chunk_id": "python_basics.pdf::chunk_0",
-      "snippet": "A variable in Python is a named container used to store a value..."
-    }
+    "Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow — Page 60",
+    "Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow — Page 59"
   ]
 }
 ```
 
-Empty/missing `question` returns **HTTP 422** (validation error).
+The exact generated answer and retrieved sources may vary depending on the retrieval results and LLM generation.
 
-### Example curl request
+---
 
-```bash
-curl -X POST http://localhost:8000/query \
-  -H "Content-Type: application/json" \
-  -d '{"question": "What is a variable in Python?"}'
+## 17. Interactive API Documentation
+
+FastAPI automatically provides Swagger UI.
+
+After starting the backend, open:
+
+```text
+http://127.0.0.1:8000/docs
 ```
 
-## Evaluation results
+From Swagger UI, you can test:
 
-Full details, including the results table and failure-case analysis, are in
-`notebooks/rag_pipeline.ipynb`, Sections 3.10–3.11. Summary: 10 in-scope questions and 2
-deliberately out-of-scope questions were tested; all 10 in-scope answers were grounded and
-correct against their retrieved sources, and both out-of-scope questions correctly triggered
-"I don't have enough information in the documents to answer that" instead of a hallucinated
-answer.
+* `GET /health`
+* `POST /query`
 
-## Screenshots
+---
 
-*(Add screenshots of your running app here before submission.)*
+## 18. Running the Frontend
 
-- `docs/screenshots/frontend-chat.png` — Streamlit chat interface with an answer and sources
-- `docs/screenshots/swagger-ui.png` — `/query` endpoint tested from `/docs`
-- `docs/screenshots/notebook-eval.png` — evaluation table from the notebook
+Open another terminal.
 
-## Troubleshooting
+Move to the frontend directory:
 
-| Symptom | Likely cause | Fix |
-|---|---|---|
-| Backend log: "Vector store loaded but appears EMPTY" | Notebook wasn't run, or vector store wasn't copied to `backend/data/vector_store` | Re-run the notebook top-to-bottom (Section 3.12 copies the store automatically) |
-| `ollama.chat(...)` raises a connection error | Ollama isn't running | Run `ollama serve`, confirm with `ollama --version` and `ollama list` |
-| Frontend sidebar shows "Backend is NOT reachable" | Backend isn't running, or wrong `API_BASE_URL` | Start the backend first; check `frontend/.env` matches the backend's actual host/port |
-| `pip install -r requirements.txt` fails on `chromadb` | Missing build tools / old pip | Upgrade pip (`pip install --upgrade pip`) and retry; on Windows, install "Visual C++ Build Tools" if prompted |
-| `/query` returns HTTP 422 | Empty or missing `question` field in the request body | Send a non-empty `question` string |
-| Answers look irrelevant to the question | Embedding model mismatch between notebook and backend `.env` | Make sure `EMBEDDING_MODEL_NAME` is identical in both places |
+```powershell
+cd frontend
+```
 
-## Final demo instructions
+Run Streamlit:
 
-1. Confirm `ollama serve` is running and `ollama list` shows `llama3.2`.
-2. Start the backend (`uvicorn app.main:app --reload` inside `backend/`) and confirm
-   `http://localhost:8000/health` returns `{"status": "ok"}`.
-3. Start the frontend (`streamlit run app.py` inside `frontend/`) and confirm the sidebar shows
-   "Backend is reachable ✅".
-4. Ask 2-3 in-scope questions (e.g. "What is a variable in Python?") to show grounded, cited
-   answers, then ask one clearly out-of-scope question (e.g. "What is the capital of France?")
-   to demonstrate the assistant correctly refuses to hallucinate.
-5. Optionally, open `notebooks/rag_pipeline.ipynb` to walk through the pipeline and the
-   evaluation table.
+```bash
+python -m streamlit run app.py
+```
 
-## Requirements checklist
+The application will be available at:
 
-See the project delivery message for the full requirement-by-requirement checklist
-(`Requirement | Implemented? | File/location | How to verify`).
+```text
+http://localhost:8501
+```
+
+The frontend provides a chat-style interface where users can:
+
+1. Enter a study question.
+2. Send the question to the FastAPI backend.
+3. Wait while the RAG pipeline retrieves relevant information.
+4. View the generated answer.
+5. View the retrieved document sources.
+
+---
+
+# 19. Screenshots
+
+The following screenshots demonstrate the system running end-to-end.
+
+### Streamlit Application
+
+Add the application screenshot here:
+
+```text
+screenshots/streamlit.png
+```
+
+---
+
+### FastAPI Swagger Documentation
+
+Add the Swagger screenshot here:
+
+```text
+screenshots/swagger.png
+```
+
+---
+
+### RAG Evaluation
+
+Add the evaluation output screenshot here:
+
+```text
+screenshots/evaluation.png
+```
+
+---
+
+### Retrieval with Metadata
+
+Add the retrieval output screenshot here:
+
+```text
+screenshots/retrieval.png
+```
+
+---
+
+## 20. Evaluation
+
+The RAG system was evaluated using 10 questions covering different machine learning concepts.
+
+The evaluation questions included:
+
+1. What is overfitting?
+2. What is the difference between supervised and unsupervised learning?
+3. Explain linear regression.
+4. What is the purpose of cross-validation?
+5. What is the ROC curve used for?
+6. What's the difference between OvR and OvO strategies?
+7. What is a Random Forest?
+8. What is a GAN?
+9. What is Q-learning?
+10. What is the bias/variance trade-off?
+
+For every question, the system:
+
+1. Retrieved the top relevant document chunks.
+2. Retrieved source and page metadata.
+3. Passed the retrieved context to the local LLM.
+4. Generated a grounded answer.
+5. Recorded the retrieved sources and generated answer.
+
+The evaluation results were saved to:
+
+```text
+notebooks/evaluation_results.csv
+```
+
+### Evaluation Summary
+
+| Metric          | Result |
+| --------------- | -----: |
+| Total questions |     10 |
+| Correct answers |     10 |
+| Accuracy        |   100% |
+
+The evaluation was based on manual inspection of the generated answers against the retrieved document context.
+
+---
+
+## 21. Retrieval Evaluation
+
+A page-aware retrieval test was performed using ChromaDB.
+
+The final collection contains:
+
+```text
+2,449 document chunks
+```
+
+Example retrieval result for:
+
+```text
+What is overfitting?
+```
+
+```text
+Source:
+Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow
+
+Page: 60
+Distance: 0.5688
+```
+
+The retrieved text directly discusses overfitting.
+
+Additional retrieved pages included:
+
+```text
+Page 59
+Distance: 0.7698
+```
+
+and:
+
+```text
+Page 164
+Distance: 0.7949
+```
+
+This demonstrates that the retrieval system can identify semantically related content and preserve page-level source information.
+
+---
+
+## 22. Out-of-Domain Behavior
+
+The system was also tested with a question outside the knowledge contained in the study documents.
+
+Example:
+
+```text
+Who is the current president of France?
+```
+
+The system responded:
+
+```text
+I don't have enough information in the documents to answer that.
+```
+
+This behavior is intentional.
+
+The RAG pipeline is designed to prioritize retrieved document context rather than allowing the LLM to freely answer using information outside the provided knowledge base.
+
+---
+
+## 23. Failure Cases and Mitigation
+
+RAG systems can fail when the relevant information is not retrieved or when the retrieved context is insufficient.
+
+Potential failure cases include:
+
+### 23.1 Irrelevant Retrieval
+
+The vector database may return chunks that are semantically related but do not directly answer the question.
+
+Mitigation:
+
+* Improve chunking strategy.
+* Tune chunk size and overlap.
+* Adjust the number of retrieved chunks.
+* Evaluate alternative embedding models.
+* Improve retrieval thresholds.
+
+### 23.2 Insufficient Context
+
+If the required information is not present in the retrieved chunks, the LLM may not have enough information to answer.
+
+Mitigation:
+
+The generation prompt explicitly instructs the model to avoid unsupported answers and return:
+
+```text
+I don't have enough information in the documents to answer that.
+```
+
+### 23.3 Out-of-Domain Questions
+
+Questions unrelated to the document collection should not be answered using the model's general knowledge.
+
+Mitigation:
+
+The system uses retrieved context as the knowledge source and can refuse to answer when sufficient supporting information is unavailable.
+
+### 23.4 Metadata Retrieval
+
+Incorrect or missing metadata could make source citation unreliable.
+
+Mitigation:
+
+Each document chunk stores source and page metadata during ingestion, allowing the retrieval layer to return the original document and page information.
+
+---
+
+## 24. Backend Testing
+
+The backend includes automated tests using Pytest and FastAPI's TestClient.
+
+The tests cover:
+
+### Happy Path
+
+A valid question is submitted to:
+
+```text
+POST /query
+```
+
+The test verifies that the endpoint successfully returns a response.
+
+### Invalid Input
+
+An empty or invalid question is submitted.
+
+The API is expected to return:
+
+```text
+422 Unprocessable Entity
+```
+
+Run the tests with:
+
+```bash
+pytest
+```
+
+---
+
+## 25. Security and Configuration
+
+Sensitive environment variables are not committed to GitHub.
+
+The `.gitignore` excludes:
+
+```text
+.env
+backend/.env
+frontend/.env
+.venv/
+__pycache__/
+*.pyc
+*.log
+```
+
+The project uses `.env.example` files to document the required configuration without exposing private environment values.
+
+---
+
+## 26. Docker
+
+The backend includes a Dockerfile for containerized deployment.
+
+Build the backend image:
+
+```bash
+docker build -t rag-study-assistant-backend ./backend
+```
+
+Run the container:
+
+```bash
+docker run -p 8000:8000 rag-study-assistant-backend
+```
+
+The Ollama service must also be accessible to the container when using local LLM generation.
+
+---
+
+## 27. Reproducibility
+
+The complete RAG pipeline is implemented in:
+
+```text
+notebooks/rag_pipeline.ipynb
+```
+
+The notebook contains the main stages required to reproduce the system:
+
+1. Load and inspect the source documents.
+2. Process the document pages.
+3. Chunk the content.
+4. Generate embeddings.
+5. Create the ChromaDB collection.
+6. Store document metadata.
+7. Test semantic retrieval.
+8. Evaluate the RAG pipeline using 10 questions.
+9. Save the evaluation results.
+10. Persist the vector store for backend use.
+
+The notebook is designed to run from top to bottom.
+
+---
+
+## 28. Future Improvements
+
+Possible future improvements include:
+
+* Adding more study documents.
+* Supporting multiple document formats.
+* Improving chunking strategies.
+* Adding hybrid keyword and semantic retrieval.
+* Adding reranking models.
+* Adding conversation memory.
+* Adding document upload functionality.
+* Adding authentication.
+* Adding streaming LLM responses.
+* Adding more extensive automated RAG evaluation.
+* Adding a larger evaluation dataset.
+* Adding deployment to a cloud platform.
+
+---
+
+## 29. Project Goal
+
+The main goal of this project is to demonstrate a complete Retrieval-Augmented Generation workflow:
+
+```text
+Documents
+    ↓
+Document Processing
+    ↓
+Chunking
+    ↓
+Embeddings
+    ↓
+ChromaDB
+    ↓
+Semantic Retrieval
+    ↓
+Retrieved Context
+    ↓
+Ollama / Llama 3.2
+    ↓
+Grounded Answer
+    ↓
+FastAPI
+    ↓
+Streamlit
+```
+
+The project combines information retrieval, vector databases, embeddings, local LLM inference, API development, and frontend development into one complete AI application.
+
+---
+
+## 30. Author 
+
+**Rawan Mahmoud & Roaa Hatem **
+
+AI Student and Applied AI Developer
+
+GitHub:
+
+https://github.com/RawanMahmoud30
+
+https://github.com/roaahatem10
+
+Project Repository:
+
+https://github.com/RawanMahmoud30/rag-assistant-project
+
+https://github.com/roaahatem10/rag-assistant-project.git
+
+---
+
+## 31. License
+
+This project was developed as an educational graduation project for the Level 2 Summer Training program.
+
+The source document used for the RAG knowledge base is referenced for educational retrieval purposes.
