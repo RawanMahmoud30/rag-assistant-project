@@ -1,0 +1,12 @@
+# Root-level requirements: used to run notebooks/rag_pipeline.ipynb
+# (backend/ and frontend/ have their own separate requirements.txt files).
+
+jupyter==1.1.1
+pandas==2.2.3
+numpy==2.2.1
+chromadb==0.5.23
+sentence-transformers==3.3.1
+pypdf==5.1.0
+ollama==0.4.4
+python-dotenv==1.0.1
+reportlab==4.2.5

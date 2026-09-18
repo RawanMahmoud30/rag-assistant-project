@@ -1,0 +1,35 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# Environment files with secrets
+.env
+backend/.env
+frontend/.env
+
+# Logs
+*.log
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Raw document corpus (can be large; document how to obtain it in README instead)
+data/raw_docs/
+
+# Persisted vector store (can be large; regenerate via the notebook instead of committing)
+data/vector_store/
+backend/data/vector_store/
+
+# OS / editor junk
+.DS_Store
+.vscode/
+.idea/
+
+# Pytest cache
+.pytest_cache/
