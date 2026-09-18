@@ -31,47 +31,23 @@ This approach improves grounding and reduces unsupported answers.
 
 ### Domain
 
-The project focuses on educational and machine learning study materials.
+2. Domain and Data Description
+Domain: Study Assistant. The starter corpus (data/raw_docs/) contains 4 short PDFs of programming study notes: Python variables & data types, Python functions, data structures (lists/dicts/sets), and OOP basics. They were generated with data/generate_sample_docs.py so the project works out of the box with real, text-extractable PDFs. You can freely replace or add your own PDFs (lecture notes, slides exported as PDF, textbook excerpts) as long as they are text-based rather than scanned images — scanned PDFs would need an OCR step not included here.
 
-The main source document used for the RAG system is:
-
-**Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow**
-
-The document contains educational material covering topics such as:
-
-* Machine Learning fundamentals
-* Supervised and unsupervised learning
-* Classification
-* Regression
-* Model evaluation
-* Cross-validation
-* ROC curves
-* Ensemble methods
-* Random Forests
-* Neural Networks
-* Generative Adversarial Networks
-* Reinforcement Learning
-* Q-learning
-* Bias and variance
-* Model training and regularization
-
-### Data Processing
-
+Data Processing
 The document was processed page by page and divided into smaller chunks suitable for semantic retrieval.
 
 Each chunk stores metadata including:
 
-* Source document
-* Page number
-* Chunk identifier
-
+Source document
+Page number
+Chunk identifier
 The final ChromaDB collection contains:
 
-**2,449 document chunks**
+2,449 document chunks
 
 The page-aware metadata allows the system to return not only relevant text but also the source and page where the information was found.
 
----
 
 ## 3. System Architecture
 
@@ -160,13 +136,6 @@ When a user asks a question, the question is embedded and compared with the stor
 
 The system retrieves the most relevant chunks using semantic similarity.
 
-The retrieval process is page-aware and returns metadata such as:
-
-```text
-Source: Hands-On Machine Learning with Scikit-Learn, Keras, and TensorFlow
-Page: 60
-Distance: 0.5688
-```
 
 ### 4.6 Generation
 
