@@ -1,4 +1,4 @@
-# RAG Study Assistant
+<img width="1280" height="672" alt="image" src="https://github.com/user-attachments/assets/d894f6c4-1ba5-47b6-8d2f-2ded0cd11d46" /># RAG Study Assistant
 
 A Retrieval-Augmented Generation (RAG) based AI Study Assistant that answers questions from educational documents using semantic retrieval, vector embeddings, and a locally hosted Large Language Model.
 
@@ -603,41 +603,36 @@ The following screenshots demonstrate the system running end-to-end.
 
 Add the application screenshot here:
 
-```text
-screenshots/streamlit.png
+```photo
+
 ```
 
 ---
+<img width="1280" height="672" alt="image" src="https://github.com/user-attachments/assets/7044b7b3-8bc8-4c81-a4fe-fee6778ab3b0" />
+
 
 ### FastAPI Swagger Documentation
 
 Add the Swagger screenshot here:
 
-```text
-screenshots/swagger.png
-```
+<img width="1280" height="672" alt="image" src="https://github.com/user-attachments/assets/f6319b1d-b673-4fae-9a26-9b8b9dcaf691" />
+<img width="1280" height="672" alt="image" src="https://github.com/user-attachments/assets/9fbbcfd4-e050-42cc-b8cd-528e96a6cb07" />
 
----
+
 
 ### RAG Evaluation
 
 Add the evaluation output screenshot here:
 
-```text
-screenshots/evaluation.png
-```
+<img width="1280" height="672" alt="image" src="https://github.com/user-attachments/assets/e9fd606b-668c-427e-948e-4523a7a95ec7" />
 
----
 
 ### Retrieval with Metadata
 
 Add the retrieval output screenshot here:
 
-```text
-screenshots/retrieval.png
-```
+<img width="1280" height="672" alt="image" src="https://github.com/user-attachments/assets/a6ec091e-b1f4-48c3-be34-1e2e9dfaea2f" />
 
----
 
 ## 20. Evaluation
 
@@ -666,9 +661,15 @@ For every question, the system:
 
 The evaluation results were saved to:
 
-```text
-notebooks/evaluation_results.csv
-```
+<img width="960" height="504" alt="image" src="https://github.com/user-attachments/assets/012bb8b8-8e23-41c3-9e20-3ba9b77455a2" />
+<img width="960" height="504" alt="image" src="https://github.com/user-attachments/assets/1315dc60-e672-4013-822a-e483876832c4" />
+<img width="960" height="504" alt="image" src="https://github.com/user-attachments/assets/86e3ce66-8931-40bf-967a-b4f0c67543ab" />
+<img width="960" height="504" alt="image" src="https://github.com/user-attachments/assets/bd3076ef-0b67-497b-bbe4-1ad6262056a4" />
+<img width="960" height="504" alt="image" src="https://github.com/user-attachments/assets/2876f4b3-e2d0-4f19-afcd-3c5080c608a8" />
+
+
+
+
 
 ### Evaluation Summary
 
